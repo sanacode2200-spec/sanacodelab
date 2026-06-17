@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# sanacode Lab Office Planet
 
-## Getting Started
+Three.js と Next.js で動く、ローカル運用前提の小さな球体オフィスゲームです。
 
-First, run the development server:
+## 起動方法
 
 ```bash
+cp .env.local.example .env.local
+# .env.local の NOTION_TOKEN を設定
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで `http://localhost:3000/game` を開きます。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 操作
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `WASD` / 矢印キー: 球体オフィス上を移動
+- スマホ: 画面スワイプで移動
+- 右下チャット:
+  - `アオイ 来て`
+  - `全員集合`
+  - `ミーティング`
+  - `アオイ 報告: 内容`
+  - `進捗確認`
+  - `解散`
 
-## Learn More
+## Notion 連携
 
-To learn more about Next.js, take a look at the following resources:
+`.env.local` に以下を設定します。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+NOTION_TOKEN=your_integration_token
+NOTION_PROJECT_PAGE_ID=08e96ff6-653e-4c4c-a0a5-0fd874d8bb95
+NOTION_TASK_DB_ID=2ca863cd-8d0b-49a4-bf82-2e3e3029ccc4
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`GET /api/notion/tasks` はタスクDBから `担当部署` と `ステータス` を読み、キャラ状態に反映します。
+`POST /api/notion/report` はプロジェクトページ末尾へ `[YYYY-MM-DD HH:mm] character: content` 形式で追記します。
