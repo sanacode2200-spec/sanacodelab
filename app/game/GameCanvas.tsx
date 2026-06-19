@@ -2,17 +2,10 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import * as THREE from "three";
-import {
-  animateHumanoid,
-  characterByName,
-  CHARACTER_ROSTER,
-  CharacterStatus,
-  createHumanoid,
-  HumanoidParts,
-  OfficeCharacter,
-} from "./characters";
+import { characterByName, CHARACTER_ROSTER, CharacterStatus, OfficeCharacter } from "./characters";
 import { addOfficeMap } from "./officeMap";
 import { addOutline, toonMaterial } from "./toonShading";
+import { CharacterRig, createCharacterRig } from "./vrmRig";
 import {
   bearingTo,
   clampLat,
@@ -63,7 +56,7 @@ interface Props {
 
 interface NpcState {
   data: OfficeCharacter;
-  parts: HumanoidParts;
+  parts: CharacterRig;
   point: SphericalPoint;
   target: SphericalPoint;
   yaw: number;
@@ -93,7 +86,7 @@ class OfficePlanetGame {
   private disposed = false;
   private keys = new Set<string>();
   private touch = { active: false, x: 0, y: 0, dx: 0, dy: 0 };
-  private player = createHumanoid(0x172554, 1);
+  private player = createCharacterRig("/models/player.vrm", 0x172554, 1);
   private playerPoint: SphericalPoint = { ...PLAYER_SPAWN_POINT };
   private heading = 0;
   private npcs: NpcState[] = [];
@@ -246,7 +239,7 @@ class OfficePlanetGame {
 
   private buildCharacters() {
     this.npcs = CHARACTER_ROSTER.map((character, i) => {
-      const parts = createHumanoid(character.colorHex, 0.94);
+      const parts = createCharacterRig(`/models/${character.id}.vrm`, character.colorHex, 0.94);
       this.scene.add(parts.root);
       return {
         data: { ...character },
@@ -337,7 +330,7 @@ class OfficePlanetGame {
     );
     this.confineToOfficeArea(prevPoint);
     orientObjectOnSphere(this.player.root, this.playerPoint, PLANET_RADIUS, this.heading, PLAYER_HEIGHT);
-    animateHumanoid(this.player, t, Math.abs(move) > 0.04 ? "walk" : "未着手", Math.abs(move));
+    this.player.update(dt, t, Math.abs(move) > 0.04 ? "walk" : "未着手", Math.abs(move));
 
     this.updateNpcs(dt, t);
     this.updateCamera(dt);
@@ -363,7 +356,7 @@ class OfficePlanetGame {
         if (look.lengthSq() > 0.001) npc.yaw = Math.atan2(look.dot(east), look.dot(north));
       }
       orientObjectOnSphere(npc.parts.root, npc.point, PLANET_RADIUS, npc.yaw, 0.04);
-      animateHumanoid(npc.parts, t, moving ? "walk" : npc.data.status, 1);
+      npc.parts.update(dt, t, moving ? "walk" : npc.data.status, 1);
     }
   }
 

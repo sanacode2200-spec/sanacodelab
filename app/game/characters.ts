@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { OFFICE_CENTER, pointOnDisc, SphericalPoint } from "./sphere";
-import { addOutline, toonMaterial } from "./toonShading";
 
 export type CharacterStatus = "未着手" | "進行中" | "完了";
 
@@ -28,7 +27,6 @@ export const CHARACTER_ROSTER: OfficeCharacter[] = [
 ];
 
 export interface HumanoidParts {
-  root: THREE.Group;
   body: THREE.Group;
   head: THREE.Mesh;
   torso: THREE.Mesh;
@@ -39,7 +37,7 @@ export interface HumanoidParts {
 }
 
 function mat(color: number) {
-  return toonMaterial(color);
+  return new THREE.MeshLambertMaterial({ color });
 }
 
 function limb(parent: THREE.Group, size: [number, number, number], x: number, y: number, z: number, material: THREE.Material) {
@@ -49,36 +47,39 @@ function limb(parent: THREE.Group, size: [number, number, number], x: number, y:
   mesh.position.y = -size[1] / 2;
   mesh.castShadow = true;
   pivot.add(mesh);
-  addOutline(mesh);
   parent.add(pivot);
   return pivot;
 }
 
-export function createHumanoid(torsoColor: number, scale = 1): HumanoidParts {
-  const root = new THREE.Group();
-  const body = new THREE.Group();
-  root.add(body);
-  root.scale.setScalar(scale);
-
+// VRMが読み込めなかった場合のフォールバック表示として使う、プリミティブ組み合わせの棒人間。
+// 既存の body グループ(VRMロード中はプレースホルダー、ロード失敗時はこれを差し込む)へ直接パーツを追加する。
+export function attachHumanoidPrimitive(body: THREE.Group, torsoColor: number): HumanoidParts {
   const skin = mat(0xffffff);
   const torsoMat = mat(torsoColor);
 
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), torsoMat);
   torso.position.y = 0.95;
   body.add(torso);
-  addOutline(torso);
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 18, 12), skin);
   head.position.y = 1.62;
   body.add(head);
-  addOutline(head);
 
   const leftArm = limb(body, [0.2, 0.6, 0.2], 0.43, 1.28, 0, skin);
   const rightArm = limb(body, [0.2, 0.6, 0.2], -0.43, 1.28, 0, skin);
   const leftLeg = limb(body, [0.22, 0.6, 0.22], 0.18, 0.58, 0, torsoMat);
   const rightLeg = limb(body, [0.22, 0.6, 0.22], -0.18, 0.58, 0, torsoMat);
 
-  return { root, body, head, torso, leftArm, rightArm, leftLeg, rightLeg };
+  return { body, head, torso, leftArm, rightArm, leftLeg, rightLeg };
+}
+
+export function createHumanoid(torsoColor: number, scale = 1) {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  root.scale.setScalar(scale);
+  const parts = attachHumanoidPrimitive(body, torsoColor);
+  return { root, ...parts };
 }
 
 export function animateHumanoid(parts: HumanoidParts, t: number, mode: CharacterStatus | "walk", amount = 1) {
