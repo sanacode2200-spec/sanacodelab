@@ -1,12 +1,17 @@
 import * as THREE from "three";
 
-export const PLANET_RADIUS = 18;
+export const PLANET_RADIUS = 60;
 export const DEG = Math.PI / 180;
 
 export interface SphericalPoint {
   lat: number;
   lon: number;
 }
+
+// 全部署をこの一点を中心にした扇形/円形エリアに集約する
+export const OFFICE_CENTER: SphericalPoint = { lat: 0, lon: 0 };
+export const OFFICE_AREA_SOFT_RADIUS = 20 * DEG;
+export const OFFICE_AREA_HARD_RADIUS = 27 * DEG;
 
 const basisMatrix = new THREE.Matrix4();
 
@@ -74,4 +79,24 @@ export function offsetPoint(point: SphericalPoint, northMeters: number, eastMete
     lat: clampLat(point.lat + northMeters / radius),
     lon: normalizeLon(point.lon + eastMeters / (radius * Math.max(0.12, Math.cos(point.lat)))),
   };
+}
+
+// center から方位角 angleDeg(0=北, 時計回り) 方向に角距離 radiusDeg だけ離れた点を返す
+export function pointOnDisc(center: SphericalPoint, radiusDeg: number, angleDeg: number, radius = PLANET_RADIUS) {
+  const radiusRad = radiusDeg * DEG;
+  const angleRad = angleDeg * DEG;
+  const northMeters = Math.cos(angleRad) * radiusRad * radius;
+  const eastMeters = Math.sin(angleRad) * radiusRad * radius;
+  return offsetPoint(center, northMeters, eastMeters, radius);
+}
+
+// from から to への初期方位角(0=北, 時計回り)を返す。orientObjectOnSphere の yaw と同じ規約
+export function bearingTo(from: SphericalPoint, to: SphericalPoint) {
+  const fromDir = latLonToDir(from.lat, from.lon);
+  const toDir = latLonToDir(to.lat, to.lon);
+  const { east, north } = tangentBasis(fromDir, from.lon);
+  const delta = toDir.clone().sub(fromDir.clone().multiplyScalar(toDir.dot(fromDir)));
+  if (delta.lengthSq() < 1e-10) return 0;
+  delta.normalize();
+  return Math.atan2(delta.dot(east), delta.dot(north));
 }

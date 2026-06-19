@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { DEG, SphericalPoint } from "./sphere";
+import { OFFICE_CENTER, pointOnDisc, SphericalPoint } from "./sphere";
+import { addOutline, toonMaterial } from "./toonShading";
 
 export type CharacterStatus = "未着手" | "進行中" | "完了";
 
@@ -15,14 +16,15 @@ export interface OfficeCharacter {
   status: CharacterStatus;
 }
 
+// 7部署を OFFICE_CENTER を中心とした扇形エリア(方位角±60度、半径8〜13度)にまとめて配置
 export const CHARACTER_ROSTER: OfficeCharacter[] = [
-  { id: "aoi", name: "アオイ", department: "開発部", color: "#4488ff", colorHex: 0x4488ff, line: "受け取った。実装する。", home: { lat: 1 * DEG, lon: 0 * DEG }, task: "UI基盤の調整", status: "未着手" },
-  { id: "koyuki", name: "コユキ", department: "品質保証部", color: "#ff88cc", colorHex: 0xff88cc, line: "確認します。品質は妥協しません。", home: { lat: -1 * DEG, lon: 51 * DEG }, task: "回帰テスト", status: "未着手" },
-  { id: "take", name: "タケ", department: "商品企画部", color: "#ffaa22", colorHex: 0xffaa22, line: "了解。数字に落とす。", home: { lat: 1 * DEG, lon: 103 * DEG }, task: "KPI整理", status: "未着手" },
-  { id: "tsumugi", name: "ツムギ", department: "編集部", color: "#88ffaa", colorHex: 0x88ffaa, line: "ありがとうございます。丁寧に仕上げます。", home: { lat: -1 * DEG, lon: 154 * DEG }, task: "リリース文面", status: "未着手" },
-  { id: "haru", name: "ハル", department: "マーケティング部", color: "#ff6644", colorHex: 0xff6644, line: "やった!すぐ動く!", home: { lat: 1 * DEG, lon: 206 * DEG }, task: "告知準備", status: "未着手" },
-  { id: "fuji", name: "フジ", department: "デザイン部", color: "#cc88ff", colorHex: 0xcc88ff, line: "受け取った。ビジュアルに落とす。", home: { lat: -1 * DEG, lon: 257 * DEG }, task: "ビジュアル案", status: "未着手" },
-  { id: "tsukasa", name: "ツカサ", department: "リサーチ部", color: "#44ffee", colorHex: 0x44ffee, line: "了解。裏取りする。", home: { lat: 1 * DEG, lon: 309 * DEG }, task: "競合調査", status: "未着手" },
+  { id: "aoi", name: "アオイ", department: "開発部", color: "#4488ff", colorHex: 0x4488ff, line: "受け取った。実装する。", home: pointOnDisc(OFFICE_CENTER, 8, -60), task: "UI基盤の調整", status: "未着手" },
+  { id: "koyuki", name: "コユキ", department: "品質保証部", color: "#ff88cc", colorHex: 0xff88cc, line: "確認します。品質は妥協しません。", home: pointOnDisc(OFFICE_CENTER, 11, -40), task: "回帰テスト", status: "未着手" },
+  { id: "take", name: "タケ", department: "商品企画部", color: "#ffaa22", colorHex: 0xffaa22, line: "了解。数字に落とす。", home: pointOnDisc(OFFICE_CENTER, 13, -20), task: "KPI整理", status: "未着手" },
+  { id: "tsumugi", name: "ツムギ", department: "編集部", color: "#88ffaa", colorHex: 0x88ffaa, line: "ありがとうございます。丁寧に仕上げます。", home: pointOnDisc(OFFICE_CENTER, 9, 0), task: "リリース文面", status: "未着手" },
+  { id: "haru", name: "ハル", department: "マーケティング部", color: "#ff6644", colorHex: 0xff6644, line: "やった!すぐ動く!", home: pointOnDisc(OFFICE_CENTER, 13, 20), task: "告知準備", status: "未着手" },
+  { id: "fuji", name: "フジ", department: "デザイン部", color: "#cc88ff", colorHex: 0xcc88ff, line: "受け取った。ビジュアルに落とす。", home: pointOnDisc(OFFICE_CENTER, 11, 40), task: "ビジュアル案", status: "未着手" },
+  { id: "tsukasa", name: "ツカサ", department: "リサーチ部", color: "#44ffee", colorHex: 0x44ffee, line: "了解。裏取りする。", home: pointOnDisc(OFFICE_CENTER, 8, 60), task: "競合調査", status: "未着手" },
 ];
 
 export interface HumanoidParts {
@@ -37,7 +39,7 @@ export interface HumanoidParts {
 }
 
 function mat(color: number) {
-  return new THREE.MeshLambertMaterial({ color });
+  return toonMaterial(color);
 }
 
 function limb(parent: THREE.Group, size: [number, number, number], x: number, y: number, z: number, material: THREE.Material) {
@@ -47,6 +49,7 @@ function limb(parent: THREE.Group, size: [number, number, number], x: number, y:
   mesh.position.y = -size[1] / 2;
   mesh.castShadow = true;
   pivot.add(mesh);
+  addOutline(mesh);
   parent.add(pivot);
   return pivot;
 }
@@ -63,10 +66,12 @@ export function createHumanoid(torsoColor: number, scale = 1): HumanoidParts {
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.8, 0.3), torsoMat);
   torso.position.y = 0.95;
   body.add(torso);
+  addOutline(torso);
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.35, 18, 12), skin);
   head.position.y = 1.62;
   body.add(head);
+  addOutline(head);
 
   const leftArm = limb(body, [0.2, 0.6, 0.2], 0.43, 1.28, 0, skin);
   const rightArm = limb(body, [0.2, 0.6, 0.2], -0.43, 1.28, 0, skin);

@@ -12,15 +12,21 @@ import {
   OfficeCharacter,
 } from "./characters";
 import { addOfficeMap } from "./officeMap";
+import { addOutline, toonMaterial } from "./toonShading";
 import {
+  bearingTo,
   clampLat,
   DEG,
   dirToLatLon,
   latLonToDir,
   normalizeLon,
   offsetPoint,
+  OFFICE_AREA_HARD_RADIUS,
+  OFFICE_AREA_SOFT_RADIUS,
+  OFFICE_CENTER,
   orientObjectOnSphere,
   PLANET_RADIUS,
+  pointOnDisc,
   rotateDirToward,
   SphericalPoint,
   tangentBasis,
@@ -64,11 +70,18 @@ interface NpcState {
   meetingSeat?: SphericalPoint;
 }
 
-const PLAYER_SPEED = 0.62;
+// 速度は実際の歩く速さ(m/s)で指定し、半径に応じて角速度に変換する
+const PLAYER_SPEED_MPS = 4.2;
+const NPC_SPEED_MPS = 3.2;
+const PLAYER_SPEED = PLAYER_SPEED_MPS / PLANET_RADIUS;
 const TURN_SPEED = 1.9;
-const NPC_SPEED = 0.48;
+const NPC_SPEED = NPC_SPEED_MPS / PLANET_RADIUS;
 const PLAYER_HEIGHT = 0.06;
-const MEETING_CENTER = { lat: 88 * DEG, lon: 0 };
+const MEETING_CENTER = OFFICE_CENTER;
+// 半径18基準で調整されていた着席の輪の大きさ(実寸)を保つための縮尺
+const MEETING_SEAT_RADIUS_DEG = 12 * (18 / PLANET_RADIUS);
+const PLAYER_SPAWN_POINT = pointOnDisc(OFFICE_CENTER, 6, 180);
+const PLAYER_MEETING_SPOT = pointOnDisc(OFFICE_CENTER, 5, 180);
 
 class OfficePlanetGame {
   private renderer: THREE.WebGLRenderer;
@@ -81,8 +94,8 @@ class OfficePlanetGame {
   private keys = new Set<string>();
   private touch = { active: false, x: 0, y: 0, dx: 0, dy: 0 };
   private player = createHumanoid(0x172554, 1);
-  private playerPoint: SphericalPoint = { lat: 18 * DEG, lon: 0 };
-  private heading = Math.PI;
+  private playerPoint: SphericalPoint = { ...PLAYER_SPAWN_POINT };
+  private heading = 0;
   private npcs: NpcState[] = [];
   private lastNearId: string | null = null;
 
@@ -149,11 +162,11 @@ class OfficePlanetGame {
 
   gatherAll(meeting = true) {
     this.npcs.forEach((npc, i) => {
-      const seatLon = (i / this.npcs.length) * Math.PI * 2;
-      npc.meetingSeat = { lat: 78 * DEG, lon: seatLon };
+      const seatAngle = (i / this.npcs.length) * 360;
+      npc.meetingSeat = pointOnDisc(OFFICE_CENTER, MEETING_SEAT_RADIUS_DEG, seatAngle);
       npc.target = npc.meetingSeat;
     });
-    if (meeting) this.playerPoint = { lat: 72 * DEG, lon: Math.PI };
+    if (meeting) this.playerPoint = { ...PLAYER_MEETING_SPOT };
   }
 
   dismissAll() {
@@ -192,17 +205,18 @@ class OfficePlanetGame {
   private buildWorld() {
     this.scene.fog = new THREE.Fog(0xe9fbff, 90, 220);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.68);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.42);
     this.scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.25);
-    sun.position.set(40, 70, 45);
+    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    sun.position.set(35, 60, 50);
     this.scene.add(sun);
 
     const floor = new THREE.Mesh(
       new THREE.SphereGeometry(PLANET_RADIUS, 96, 48),
-      new THREE.MeshLambertMaterial({ color: 0xe9d7b5 })
+      toonMaterial(0xe9d7b5)
     );
     this.scene.add(floor);
+    addOutline(floor, 1.004);
 
     const wire = new THREE.Mesh(
       new THREE.SphereGeometry(PLANET_RADIUS + 0.018, 32, 16),
@@ -239,7 +253,7 @@ class OfficePlanetGame {
         parts,
         point: { ...character.home },
         target: { ...character.home },
-        yaw: character.home.lon + Math.PI,
+        yaw: bearingTo(character.home, OFFICE_CENTER),
         meetingSeat: i === -1 ? MEETING_CENTER : undefined,
       };
     });
@@ -293,14 +307,35 @@ class OfficePlanetGame {
     };
   }
 
+  // OFFICE_AREA_SOFT_RADIUS を超えて外へ進もうとする分だけ歩幅を縮め、HARD_RADIUS で完全に止める。
+  // 内側に戻る/縁に沿って歩く動きは抵抗を受けない。
+  private confineToOfficeArea(prevPoint: SphericalPoint) {
+    const centerDir = latLonToDir(OFFICE_CENTER.lat, OFFICE_CENTER.lon);
+    const prevDir = latLonToDir(prevPoint.lat, prevPoint.lon);
+    const naiveDir = latLonToDir(this.playerPoint.lat, this.playerPoint.lon);
+    const prevDist = prevDir.angleTo(centerDir);
+    const naiveDist = naiveDir.angleTo(centerDir);
+    if (naiveDist <= prevDist || prevDist <= OFFICE_AREA_SOFT_RADIUS) return;
+    const resistance = THREE.MathUtils.clamp(
+      (OFFICE_AREA_HARD_RADIUS - prevDist) / (OFFICE_AREA_HARD_RADIUS - OFFICE_AREA_SOFT_RADIUS),
+      0,
+      1
+    );
+    const stepAngle = prevDir.angleTo(naiveDir);
+    const limited = rotateDirToward(prevDir, naiveDir, stepAngle * resistance);
+    this.playerPoint = dirToLatLon(limited);
+  }
+
   private update(dt: number) {
     const t = this.clock.elapsedTime;
     const { turn, move } = this.input();
+    const prevPoint = { ...this.playerPoint };
     this.heading = normalizeLon(this.heading + turn * TURN_SPEED * dt);
     this.playerPoint.lat = clampLat(this.playerPoint.lat + Math.cos(this.heading) * move * PLAYER_SPEED * dt);
     this.playerPoint.lon = normalizeLon(
       this.playerPoint.lon + (Math.sin(this.heading) * move * PLAYER_SPEED * dt) / Math.max(0.12, Math.cos(this.playerPoint.lat))
     );
+    this.confineToOfficeArea(prevPoint);
     orientObjectOnSphere(this.player.root, this.playerPoint, PLANET_RADIUS, this.heading, PLAYER_HEIGHT);
     animateHumanoid(this.player, t, Math.abs(move) > 0.04 ? "walk" : "未着手", Math.abs(move));
 
@@ -340,8 +375,8 @@ class OfficePlanetGame {
     const forward = north.multiplyScalar(Math.cos(this.heading)).addScaledVector(east, Math.sin(this.heading)).normalize();
     const playerWorld = dir.multiplyScalar(PLANET_RADIUS);
 
-    this.tmpCam.copy(playerWorld).addScaledVector(up, 3.6).addScaledVector(forward, -7.2);
-    this.tmpLook.copy(playerWorld).addScaledVector(up, 1.55).addScaledVector(forward, 2.2);
+    this.tmpCam.copy(playerWorld).addScaledVector(up, 5.2).addScaledVector(forward, -10.5);
+    this.tmpLook.copy(playerWorld).addScaledVector(up, 2.0).addScaledVector(forward, 3.3);
 
     const k = 1 - Math.exp(-6.5 * dt);
     this.camera.position.lerp(this.tmpCam, k);

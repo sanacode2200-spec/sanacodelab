@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { CHARACTER_ROSTER } from "./characters";
-import { DEG, orientObjectOnSphere, SphericalPoint } from "./sphere";
+import { bearingTo, OFFICE_CENTER, orientObjectOnSphere, pointOnDisc, SphericalPoint } from "./sphere";
 
 export interface DeskPlacement {
   characterId: string;
@@ -11,7 +11,7 @@ export interface DeskPlacement {
 export const DESK_PLACEMENTS: DeskPlacement[] = CHARACTER_ROSTER.map((character) => ({
   characterId: character.id,
   point: character.home,
-  yaw: character.home.lon + Math.PI,
+  yaw: bearingTo(character.home, OFFICE_CENTER),
 }));
 
 function box(w: number, h: number, d: number, color: number) {
@@ -56,9 +56,10 @@ export function addOfficeMap(scene: THREE.Scene) {
     chair.rotation.y = a + Math.PI;
     meeting.add(chair);
   }
-  orientObjectOnSphere(meeting, { lat: 88 * DEG, lon: 0 }, undefined, 0);
+  orientObjectOnSphere(meeting, OFFICE_CENTER, undefined, 0);
   furniture.add(meeting);
 
+  const loungePoint = pointOnDisc(OFFICE_CENTER, 11, 130);
   const lounge = new THREE.Group();
   const counter = box(2.9, 0.85, 0.75, 0xd8b37c);
   counter.position.y = 0.55;
@@ -69,13 +70,14 @@ export function addOfficeMap(scene: THREE.Scene) {
   const sofaB = box(1.65, 0.55, 0.72, 0xcfd6dc);
   sofaB.position.set(1.5, 0.43, 1.25);
   lounge.add(sofaB);
-  orientObjectOnSphere(lounge, { lat: -82 * DEG, lon: 28 * DEG }, undefined, Math.PI);
+  orientObjectOnSphere(lounge, loungePoint, undefined, bearingTo(loungePoint, OFFICE_CENTER));
   furniture.add(lounge);
 
   const plantPoints = [
-    [12, 26], [-10, 78], [9, 130], [-8, 184], [11, 235], [-12, 292], [24, 330], [-28, 118],
+    [6, 22.5], [13, 67.5], [6, 112.5], [13, 157.5], [6, 202.5], [13, 247.5], [6, 292.5], [13, 337.5],
   ];
-  for (const [lat, lon] of plantPoints) {
+  for (const [radiusDeg, angleDeg] of plantPoints) {
+    const point = pointOnDisc(OFFICE_CENTER, radiusDeg, angleDeg);
     const plant = new THREE.Group();
     const pot = cyl(0.28, 0.34, 0.38, 0xb7895f, 12);
     pot.position.y = 0.22;
@@ -83,7 +85,7 @@ export function addOfficeMap(scene: THREE.Scene) {
     const leaves = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 10), new THREE.MeshLambertMaterial({ color: 0x48b46b }));
     leaves.position.y = 0.82;
     plant.add(leaves);
-    orientObjectOnSphere(plant, { lat: lat * DEG, lon: lon * DEG }, undefined, lon * DEG);
+    orientObjectOnSphere(plant, point, undefined, angleDeg * (Math.PI / 180));
     furniture.add(plant);
   }
 
