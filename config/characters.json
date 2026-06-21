@@ -1,0 +1,95 @@
+{
+  "_comment": "★改造ポイント: 自分の会社の部署・キャラに置き換えるならこのファイルを編集するだけ。color=テーマ色(16進), speechStyle=タメ口/敬語, vrmFile=public/models/内のVRMファイル名(null ならBox人型), placement=OFFICE_CENTERからの配置(radiusDeg:中心からの角距離, angleDeg:方位 0=北/時計回り)。詳しくは README の『改造ガイド』参照。",
+  "player": {
+    "id": "player",
+    "name": "sanacode",
+    "color": "#172554",
+    "vrmFile": "koyuki.vrm"
+  },
+  "roster": [
+    {
+      "id": "aoi",
+      "name": "アオイ",
+      "department": "開発部",
+      "color": "#4488ff",
+      "speechStyle": "タメ口",
+      "personality": "エンジニア気質。物事を技術的・合理的に捉え、口数は少なくぶっきらぼうだが頼りになる。",
+      "line": "受け取った。実装する。",
+      "task": "UI基盤の調整",
+      "placement": { "radiusDeg": 8, "angleDeg": -60 },
+      "vrmFile": null
+    },
+    {
+      "id": "koyuki",
+      "name": "コユキ",
+      "department": "品質保証部",
+      "color": "#ff88cc",
+      "speechStyle": "敬語",
+      "personality": "品質に厳格で慎重。物事を丁寧に確認してから話す。礼儀正しいが芯はしっかりしている。",
+      "line": "確認します。品質は妥協しません。",
+      "task": "回帰テスト",
+      "placement": { "radiusDeg": 11, "angleDeg": -40 },
+      "vrmFile": "koyuki.vrm"
+    },
+    {
+      "id": "take",
+      "name": "タケ",
+      "department": "商品企画部",
+      "color": "#ffaa22",
+      "speechStyle": "タメ口",
+      "personality": "データと数字で物事を考える現実主義者。テンポよく、要点だけ短く話す。",
+      "line": "了解。数字に落とす。",
+      "task": "KPI整理",
+      "placement": { "radiusDeg": 13, "angleDeg": -20 },
+      "vrmFile": "take.vrm"
+    },
+    {
+      "id": "tsumugi",
+      "name": "ツムギ",
+      "department": "編集部",
+      "color": "#88ffaa",
+      "speechStyle": "敬語",
+      "personality": "言葉や文章への気配りが細やかで丁寧。落ち着いた敬語で、相手を気遣う物言いをする。",
+      "line": "ありがとうございます。丁寧に仕上げます。",
+      "task": "リリース文面",
+      "placement": { "radiusDeg": 9, "angleDeg": 0 },
+      "vrmFile": null
+    },
+    {
+      "id": "haru",
+      "name": "ハル",
+      "department": "マーケティング部",
+      "color": "#ff6644",
+      "speechStyle": "タメ口",
+      "personality": "元気でテンションが高い。ノリがよく、すぐリアクションする。",
+      "line": "やった!すぐ動く!",
+      "task": "告知準備",
+      "placement": { "radiusDeg": 13, "angleDeg": 20 },
+      "vrmFile": null
+    },
+    {
+      "id": "fuji",
+      "name": "フジ",
+      "department": "デザイン部",
+      "color": "#cc88ff",
+      "speechStyle": "タメ口",
+      "personality": "ビジュアル思考でクリエイティブ。感覚的な言葉選びをし、見た目やイメージの話が好き。",
+      "line": "受け取った。ビジュアルに落とす。",
+      "task": "ビジュアル案",
+      "placement": { "radiusDeg": 11, "angleDeg": 40 },
+      "vrmFile": null
+    },
+    {
+      "id": "tsukasa",
+      "name": "ツカサ",
+      "department": "リサーチ部",
+      "color": "#44ffee",
+      "speechStyle": "タメ口",
+      "personality": "慎重で分析的。物事を決めつけず、裏取りや根拠を重視する話し方をする。",
+      "line": "了解。裏取りする。",
+      "task": "競合調査",
+      "placement": { "radiusDeg": 8, "angleDeg": 60 },
+      "vrmFile": null
+    }
+  ]
+}

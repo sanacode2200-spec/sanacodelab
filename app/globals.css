@@ -1,4 +1,10 @@
 @import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Yomogi&family=Zen+Kurenaido&display=swap");
+
+/* ゲーム内テキスト用の手書き風フォント(日本語対応)。吹き出し・パネルに使う。 */
+.font-hand {
+  font-family: "Yomogi", "Zen Kurenaido", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+}
 
 :root {
   --background: #ffffff;

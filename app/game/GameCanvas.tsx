@@ -2,10 +2,17 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import * as THREE from "three";
-import { characterByName, CHARACTER_ROSTER, CharacterStatus, OfficeCharacter } from "./characters";
+import { characterByName, CHARACTER_ROSTER, CharacterStatus, OfficeCharacter, PLAYER_CONFIG } from "./characters";
 import { addOfficeMap } from "./officeMap";
+import { addEnvironment } from "./environment";
+import { theme, hex } from "./theme";
 import { addOutline, toonMaterial } from "./toonShading";
 import { CharacterRig, createCharacterRig } from "./vrmRig";
+
+// config の vrmFile(ファイル名 or null) を読み込みURLに変換する。null はBox人型。
+function vrmUrl(file: string | null): string | null {
+  return file ? `/models/${file}` : null;
+}
 import {
   bearingTo,
   clampLat,
@@ -47,6 +54,8 @@ export interface GameCanvasHandle {
   setTasks: (tasks: NotionTask[]) => void;
   getProgress: () => { done: number; total: number };
   getCharacterSnapshot: () => { name: string; department: string; task: string; status: CharacterStatus }[];
+  // キャラ頭上のスクリーン座標(ビューポート基準px)。吹き出し表示用。画面外/背面なら visible:false。
+  getCharacterScreenPos: (id: string) => { x: number; y: number; visible: boolean } | null;
 }
 
 interface Props {
@@ -86,7 +95,8 @@ class OfficePlanetGame {
   private disposed = false;
   private keys = new Set<string>();
   private touch = { active: false, x: 0, y: 0, dx: 0, dy: 0 };
-  private player = createCharacterRig("/models/player.vrm", 0x172554, 1);
+  // プレイヤーのVRMは config/characters.json の player.vrmFile で指定(暫定でコユキを流用中)
+  private player = createCharacterRig(vrmUrl(PLAYER_CONFIG.vrmFile), PLAYER_CONFIG.colorHex, 1);
   private playerPoint: SphericalPoint = { ...PLAYER_SPAWN_POINT };
   private heading = 0;
   private npcs: NpcState[] = [];
@@ -159,7 +169,11 @@ class OfficePlanetGame {
       npc.meetingSeat = pointOnDisc(OFFICE_CENTER, MEETING_SEAT_RADIUS_DEG, seatAngle);
       npc.target = npc.meetingSeat;
     });
-    if (meeting) this.playerPoint = { ...PLAYER_MEETING_SPOT };
+    if (meeting) {
+      this.playerPoint = { ...PLAYER_MEETING_SPOT };
+      // テーブル(オフィス中心)の方を向かせ、着席したNPCが画面に入るようにする
+      this.heading = bearingTo(PLAYER_MEETING_SPOT, OFFICE_CENTER);
+    }
   }
 
   dismissAll() {
@@ -195,51 +209,94 @@ class OfficePlanetGame {
     }));
   }
 
-  private buildWorld() {
-    this.scene.fog = new THREE.Fog(0xe9fbff, 90, 220);
+  private tmpProject = new THREE.Vector3();
+  getCharacterScreenPos(id: string) {
+    const npc = this.npcs.find((item) => item.data.id === id);
+    if (!npc) return null;
+    // root は球面上、頭上は上方向(=root位置の単位ベクトル)へオフセット
+    npc.parts.root.getWorldPosition(this.tmpProject);
+    const up = this.tmpProject.clone().normalize();
+    this.tmpProject.addScaledVector(up, 2.0);
+    this.tmpProject.project(this.camera);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const x = rect.left + (this.tmpProject.x * 0.5 + 0.5) * rect.width;
+    const y = rect.top + (-this.tmpProject.y * 0.5 + 0.5) * rect.height;
+    const visible = this.tmpProject.z < 1 && this.tmpProject.x >= -1 && this.tmpProject.x <= 1 && this.tmpProject.y >= -1 && this.tmpProject.y <= 1;
+    return { x, y, visible };
+  }
 
-    const ambient = new THREE.AmbientLight(0xffffff, 0.42);
+  private buildWorld() {
+    this.scene.fog = new THREE.Fog(hex(theme.fog.color), theme.fog.near, theme.fog.far);
+
+    const ambient = new THREE.AmbientLight(hex(theme.light.ambientColor), theme.light.ambientIntensity);
     this.scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    // トゥーンの段差をくっきり出すため、強めの平行光を1灯(影の境界はぼかさない)
+    const sun = new THREE.DirectionalLight(hex(theme.light.sunColor), theme.light.sunIntensity);
     sun.position.set(35, 60, 50);
     this.scene.add(sun);
 
     const floor = new THREE.Mesh(
       new THREE.SphereGeometry(PLANET_RADIUS, 96, 48),
-      toonMaterial(0xe9d7b5)
+      toonMaterial(hex(theme.ground))
     );
     this.scene.add(floor);
     addOutline(floor, 1.004);
 
-    const wire = new THREE.Mesh(
-      new THREE.SphereGeometry(PLANET_RADIUS + 0.018, 32, 16),
-      new THREE.MeshBasicMaterial({ color: 0x4f6f77, wireframe: true, transparent: true, opacity: 0.1 })
-    );
-    this.scene.add(wire);
-
+    // 上(top)→下(bottom)のグラデーション空。色は config/theme.json の sky で調整。
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(360, 32, 16),
-      new THREE.MeshBasicMaterial({ color: 0xd9f7ff, side: THREE.BackSide })
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        depthWrite: false,
+        uniforms: {
+          topColor: { value: new THREE.Color(hex(theme.sky.top)) },
+          bottomColor: { value: new THREE.Color(hex(theme.sky.bottom)) },
+        },
+        vertexShader: `
+          varying vec3 vWorldPos;
+          void main() {
+            vec4 wp = modelMatrix * vec4(position, 1.0);
+            vWorldPos = wp.xyz;
+            gl_Position = projectionMatrix * viewMatrix * wp;
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 topColor;
+          uniform vec3 bottomColor;
+          varying vec3 vWorldPos;
+          void main() {
+            float h = clamp(normalize(vWorldPos).y * 0.5 + 0.5, 0.0, 1.0);
+            gl_FragColor = vec4(mix(bottomColor, topColor, h), 1.0);
+          }
+        `,
+      })
     );
     this.scene.add(sky);
+    this.renderer.setClearColor(hex(theme.sky.bottom), 1);
 
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < theme.sky.cloudCount; i++) {
       const cloud = new THREE.Mesh(
-        new THREE.PlaneGeometry(10 + Math.random() * 10, 2.2 + Math.random() * 2.2),
-        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.32, depthWrite: false })
+        new THREE.PlaneGeometry(10 + Math.random() * 12, 2.6 + Math.random() * 2.6),
+        new THREE.MeshBasicMaterial({
+          color: hex(theme.sky.cloudColor),
+          transparent: true,
+          opacity: theme.sky.cloudOpacity,
+          depthWrite: false,
+        })
       );
       const dir = latLonToDir((-35 + Math.random() * 70) * DEG, Math.random() * Math.PI * 2);
-      cloud.position.copy(dir.multiplyScalar(96 + Math.random() * 40));
+      cloud.position.copy(dir.multiplyScalar(110 + Math.random() * 50));
       cloud.lookAt(0, 0, 0);
       this.scene.add(cloud);
     }
 
+    addEnvironment(this.scene);
     addOfficeMap(this.scene);
   }
 
   private buildCharacters() {
     this.npcs = CHARACTER_ROSTER.map((character, i) => {
-      const parts = createCharacterRig(`/models/${character.id}.vrm`, character.colorHex, 0.94);
+      const parts = createCharacterRig(vrmUrl(character.vrmFile), character.colorHex, 0.94);
       this.scene.add(parts.root);
       return {
         data: { ...character },
@@ -284,14 +341,15 @@ class OfficePlanetGame {
     const h = parent?.clientHeight ?? window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
+    this.camera.zoom = 1.5; // 画面全体を1.5倍ズーム
     this.camera.updateProjectionMatrix();
   }
 
   private input() {
     let turn = this.touch.dx;
     let move = -this.touch.dy;
-    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft")) turn += 1;
-    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) turn -= 1;
+    if (this.keys.has("KeyA") || this.keys.has("ArrowLeft")) turn -= 1;
+    if (this.keys.has("KeyD") || this.keys.has("ArrowRight")) turn += 1;
     if (this.keys.has("KeyW") || this.keys.has("ArrowUp")) move += 1;
     if (this.keys.has("KeyS") || this.keys.has("ArrowDown")) move -= 1;
     return {
@@ -329,7 +387,9 @@ class OfficePlanetGame {
       this.playerPoint.lon + (Math.sin(this.heading) * move * PLAYER_SPEED * dt) / Math.max(0.12, Math.cos(this.playerPoint.lat))
     );
     this.confineToOfficeArea(prevPoint);
-    orientObjectOnSphere(this.player.root, this.playerPoint, PLANET_RADIUS, this.heading, PLAYER_HEIGHT);
+    // 体は進行方向を向く。後退(S)時は180°回してカメラ(プレイヤー)側を向く。
+    const facing = move < -0.04 ? this.heading + Math.PI : this.heading;
+    orientObjectOnSphere(this.player.root, this.playerPoint, PLANET_RADIUS, facing, PLAYER_HEIGHT);
     this.player.update(dt, t, Math.abs(move) > 0.04 ? "walk" : "未着手", Math.abs(move));
 
     this.updateNpcs(dt, t);
@@ -368,8 +428,9 @@ class OfficePlanetGame {
     const forward = north.multiplyScalar(Math.cos(this.heading)).addScaledVector(east, Math.sin(this.heading)).normalize();
     const playerWorld = dir.multiplyScalar(PLANET_RADIUS);
 
-    this.tmpCam.copy(playerWorld).addScaledVector(up, 5.2).addScaledVector(forward, -10.5);
-    this.tmpLook.copy(playerWorld).addScaledVector(up, 2.0).addScaledVector(forward, 3.3);
+    // 参考画像(20260621_200121)に合わせ、キャラが画面の約4割を占める近めの3人称カメラ
+    this.tmpCam.copy(playerWorld).addScaledVector(up, 3.0).addScaledVector(forward, -4.6);
+    this.tmpLook.copy(playerWorld).addScaledVector(up, 1.45).addScaledVector(forward, 1.5);
 
     const k = 1 - Math.exp(-6.5 * dt);
     this.camera.position.lerp(this.tmpCam, k);
@@ -418,6 +479,7 @@ const GameCanvas = forwardRef<GameCanvasHandle, Props>(function GameCanvas(props
     setTasks: (tasks) => gameRef.current?.setTasks(tasks),
     getProgress: () => gameRef.current?.getProgress() ?? { done: 0, total: CHARACTER_ROSTER.length },
     getCharacterSnapshot: () => gameRef.current?.getCharacterSnapshot() ?? [],
+    getCharacterScreenPos: (id) => gameRef.current?.getCharacterScreenPos(id) ?? null,
   }));
 
   useEffect(() => {

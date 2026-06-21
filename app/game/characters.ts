@@ -1,5 +1,7 @@
 import * as THREE from "three";
+import charactersJson from "@/config/characters.json";
 import { OFFICE_CENTER, pointOnDisc, SphericalPoint } from "./sphere";
+import { hex } from "./theme";
 
 export type CharacterStatus = "未着手" | "進行中" | "完了";
 
@@ -13,18 +15,44 @@ export interface OfficeCharacter {
   home: SphericalPoint;
   task: string;
   status: CharacterStatus;
+  speechStyle: string;
+  personality: string;
+  // public/models/ 内のVRMファイル名。null ならBox人型で表示する。
+  vrmFile: string | null;
 }
 
-// 7部署を OFFICE_CENTER を中心とした扇形エリア(方位角±60度、半径8〜13度)にまとめて配置
-export const CHARACTER_ROSTER: OfficeCharacter[] = [
-  { id: "aoi", name: "アオイ", department: "開発部", color: "#4488ff", colorHex: 0x4488ff, line: "受け取った。実装する。", home: pointOnDisc(OFFICE_CENTER, 8, -60), task: "UI基盤の調整", status: "未着手" },
-  { id: "koyuki", name: "コユキ", department: "品質保証部", color: "#ff88cc", colorHex: 0xff88cc, line: "確認します。品質は妥協しません。", home: pointOnDisc(OFFICE_CENTER, 11, -40), task: "回帰テスト", status: "未着手" },
-  { id: "take", name: "タケ", department: "商品企画部", color: "#ffaa22", colorHex: 0xffaa22, line: "了解。数字に落とす。", home: pointOnDisc(OFFICE_CENTER, 13, -20), task: "KPI整理", status: "未着手" },
-  { id: "tsumugi", name: "ツムギ", department: "編集部", color: "#88ffaa", colorHex: 0x88ffaa, line: "ありがとうございます。丁寧に仕上げます。", home: pointOnDisc(OFFICE_CENTER, 9, 0), task: "リリース文面", status: "未着手" },
-  { id: "haru", name: "ハル", department: "マーケティング部", color: "#ff6644", colorHex: 0xff6644, line: "やった!すぐ動く!", home: pointOnDisc(OFFICE_CENTER, 13, 20), task: "告知準備", status: "未着手" },
-  { id: "fuji", name: "フジ", department: "デザイン部", color: "#cc88ff", colorHex: 0xcc88ff, line: "受け取った。ビジュアルに落とす。", home: pointOnDisc(OFFICE_CENTER, 11, 40), task: "ビジュアル案", status: "未着手" },
-  { id: "tsukasa", name: "ツカサ", department: "リサーチ部", color: "#44ffee", colorHex: 0x44ffee, line: "了解。裏取りする。", home: pointOnDisc(OFFICE_CENTER, 8, 60), task: "競合調査", status: "未着手" },
-];
+// 部署とキャラは config/characters.json が単一ソース。会社を作り変えるときはJSONを編集する。
+// home(配置)は OFFICE_CENTER を中心とした扇形エリアに placement から計算する。
+export const CHARACTER_ROSTER: OfficeCharacter[] = charactersJson.roster.map((c) => ({
+  id: c.id,
+  name: c.name,
+  department: c.department,
+  color: c.color,
+  colorHex: hex(c.color),
+  line: c.line,
+  home: pointOnDisc(OFFICE_CENTER, c.placement.radiusDeg, c.placement.angleDeg),
+  task: c.task,
+  status: "未着手" as CharacterStatus,
+  speechStyle: c.speechStyle,
+  personality: c.personality,
+  vrmFile: c.vrmFile,
+}));
+
+export interface PlayerConfig {
+  id: string;
+  name: string;
+  color: string;
+  colorHex: number;
+  vrmFile: string | null;
+}
+
+export const PLAYER_CONFIG: PlayerConfig = {
+  id: charactersJson.player.id,
+  name: charactersJson.player.name,
+  color: charactersJson.player.color,
+  colorHex: hex(charactersJson.player.color),
+  vrmFile: charactersJson.player.vrmFile,
+};
 
 export interface HumanoidParts {
   body: THREE.Group;

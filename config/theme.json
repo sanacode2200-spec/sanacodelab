@@ -1,0 +1,46 @@
+{
+  "_comment": "★改造ポイント: オフィスの色味・雰囲気はここを編集するだけで変えられる。和風・サイバーパンク等のテーマもこのファイルの色を差し替えて作る。色は16進文字列。詳しくは README の『改造ガイド』参照。",
+  "toonSteps": 3,
+  "outline": {
+    "enabled": true,
+    "color": "#1c2530",
+    "scale": 1.045
+  },
+  "sky": {
+    "top": "#7ec8f0",
+    "bottom": "#eafbff",
+    "cloudColor": "#ffffff",
+    "cloudOpacity": 0.55,
+    "cloudCount": 26
+  },
+  "fog": {
+    "color": "#dff3ff",
+    "near": 80,
+    "far": 240
+  },
+  "ground": "#eadbb6",
+  "light": {
+    "ambientColor": "#d4ebff",
+    "ambientIntensity": 0.55,
+    "sunColor": "#fff3d8",
+    "sunIntensity": 1.55
+  },
+  "furniture": {
+    "table": "#fff2dc",
+    "monitor": "#2b3340",
+    "chair": "#e3e9ef",
+    "wood": "#e0a85c",
+    "sofa": "#d3dae1",
+    "counter": "#e0a85c"
+  },
+  "plant": {
+    "pot": "#c08a55",
+    "leaves": "#52c172"
+  },
+  "buildings": {
+    "enabled": true,
+    "palette": ["#f3ede2", "#e6efe9", "#f6e3d2", "#dfe9f2", "#efe1ec"],
+    "roof": "#c9786a",
+    "accent": "#7fc8c0"
+  }
+}

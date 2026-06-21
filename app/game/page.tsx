@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import GameCanvas, { GameCanvasHandle, NearCharacter } from "./GameCanvas";
-import { handleChatCommand, ChatLog } from "./chatSystem";
+import { handleChatCommand, ChatLog, MeetingBubble } from "./chatSystem";
 import { fetchNotionTasks } from "./notionClient";
+
+const MEETING_STEP_MS = 3000;
 
 function Clock() {
   const [now, setNow] = useState(() => new Date());
@@ -24,7 +26,12 @@ export default function GamePage() {
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [meeting, setMeeting] = useState<string[]>([]);
+  // ミーティング進捗読み上げ: 台本と現在の再生位置(-1=停止)、吹き出しのスクリーン座標
+  const [script, setScript] = useState<MeetingBubble[]>([]);
+  const [scriptIndex, setScriptIndex] = useState(-1);
+  const [bubblePos, setBubblePos] = useState<{ x: number; y: number; visible: boolean } | null>(null);
+
+  const activeBubble = scriptIndex >= 0 && scriptIndex < script.length ? script[scriptIndex] : null;
 
   const append = useCallback((entries: ChatLog[]) => {
     setLog((prev) => [...prev, ...entries].slice(-24));
@@ -63,16 +70,45 @@ export default function GamePage() {
     try {
       const result = await handleChatCommand(message, gameRef.current);
       append(result.logs);
-      setMeeting(result.meetingReports ?? (message === "解散" ? [] : meeting));
+      if (result.meetingScript) {
+        // ミーティング: 台本を先頭から自動再生
+        setScript(result.meetingScript);
+        setScriptIndex(0);
+      } else if (message === "解散") {
+        setScript([]);
+        setScriptIndex(-1);
+      }
     } catch {
       append([{ speaker: "system", text: "コマンド処理に失敗しました。" }]);
     } finally {
       setSending(false);
     }
-  }, [append, input, meeting, sending]);
+  }, [append, input, sending]);
+
+  // 3秒ごとに次の発言者へ。末尾まで行ったら停止。
+  useEffect(() => {
+    if (scriptIndex < 0 || scriptIndex >= script.length) return;
+    const id = window.setTimeout(() => setScriptIndex((i) => i + 1), MEETING_STEP_MS);
+    return () => window.clearTimeout(id);
+  }, [scriptIndex, script.length]);
+
+  // 再生中、現在の発言者の頭上座標を毎フレーム追従して吹き出しを置く。
+  useEffect(() => {
+    if (!activeBubble) return;
+    let raf = 0;
+    const tick = () => {
+      setBubblePos(gameRef.current?.getCharacterScreenPos(activeBubble.id) ?? null);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      setBubblePos(null);
+    };
+  }, [activeBubble]);
 
   return (
-    <main className="relative h-screen w-full overflow-hidden bg-[#dff7ff] text-slate-900">
+    <main className="font-hand relative h-screen w-full overflow-hidden bg-[#dff7ff] text-slate-900">
       <GameCanvas ref={gameRef} onNearChange={setNear} onProgressChange={onProgressChange} />
 
       <header className="absolute left-4 top-4 pointer-events-none text-slate-800 drop-shadow-sm">
@@ -96,13 +132,36 @@ export default function GamePage() {
         </section>
       )}
 
-      {meeting.length > 0 && (
-        <section className="absolute left-1/2 top-4 w-[min(760px,calc(100vw-2rem))] -translate-x-1/2 rounded-md border border-white/80 bg-white/82 px-4 py-3 shadow-sm backdrop-blur">
-          <div className="mb-2 text-sm font-semibold text-slate-700">Meeting</div>
-          <div className="grid gap-1 text-xs text-slate-700 sm:grid-cols-2">
-            {meeting.map((line) => <div key={line}>{line}</div>)}
+      {script.length > 0 && (
+        <section className="font-hand absolute left-1/2 top-4 w-[min(820px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-white/80 bg-white/85 px-5 py-4 shadow-sm backdrop-blur">
+          <div className="mb-2 text-lg font-semibold text-slate-700">
+            ミーティング — 進捗報告 {scriptIndex >= 0 ? `(${Math.min(scriptIndex + 1, script.length)}/${script.length})` : "完了"}
+          </div>
+          <div className="grid gap-1.5 text-base text-slate-700 sm:grid-cols-2">
+            {script.slice(0, scriptIndex >= 0 ? scriptIndex + 1 : script.length).map((bubble) => (
+              <div key={bubble.id}>
+                <span className="font-semibold" style={{ color: bubble.color }}>{bubble.name}: </span>
+                <span>{bubble.text}</span>
+              </div>
+            ))}
           </div>
         </section>
+      )}
+
+      {activeBubble && bubblePos?.visible && (
+        <div
+          className="font-hand pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full"
+          style={{ left: bubblePos.x, top: bubblePos.y - 14 }}
+        >
+          <div
+            className="max-w-[340px] rounded-3xl border-2 bg-white/95 px-5 py-3 text-xl leading-snug text-slate-800 shadow-lg"
+            style={{ borderColor: activeBubble.color }}
+          >
+            <div className="text-base font-bold" style={{ color: activeBubble.color }}>{activeBubble.name}</div>
+            <div>{activeBubble.text}</div>
+          </div>
+          <div className="mx-auto h-0 w-0 border-x-[12px] border-t-[12px] border-x-transparent" style={{ borderTopColor: "rgba(255,255,255,0.95)" }} />
+        </div>
       )}
 
       <div className="absolute bottom-4 left-4 rounded-md border border-white/70 bg-white/70 px-3 py-2 text-xs text-slate-700 shadow-sm backdrop-blur">

@@ -1,4 +1,4 @@
-import { CHARACTER_ROSTER, characterByName } from "./characters";
+import { CHARACTER_ROSTER, characterByName, CharacterStatus } from "./characters";
 import { GameCanvasHandle, NotionTask } from "./GameCanvas";
 import { appendNotionReport, fetchNotionTasks } from "./notionClient";
 
@@ -8,14 +8,58 @@ export interface ChatLog {
   color?: string;
 }
 
+// ミーティングで1人ずつ吹き出し表示する台本の1コマ
+export interface MeetingBubble {
+  id: string;
+  name: string;
+  color: string;
+  text: string;
+}
+
 export interface ChatResult {
   logs: ChatLog[];
   tasks?: NotionTask[];
   meetingReports?: string[];
+  meetingScript?: MeetingBubble[];
 }
 
-function reportLine(character: { name: string; department: string; task: string; status: string }) {
-  return `${character.department}の${character.name}です。${character.task}は「${character.status}」です。`;
+// ステータス別セリフ。進行中のみ敬語/タメ口で言い回しを変える。
+function lineForTask(title: string, status: CharacterStatus, polite: boolean) {
+  if (status === "進行中") return `${title}、${polite ? "進行中です。" : "進めてる。"}`;
+  if (status === "完了") return `${title}、終わりました。`;
+  return `${title}、まだ手をつけてません。`;
+}
+
+interface TaskLike {
+  title: string;
+  status: CharacterStatus;
+}
+
+// 各キャラが「直近で終わったこと(完了)」と「現在のタスク(進行中>未着手)」を報告する台本を組む。
+// 部署順=ROSTER順。Notionにその部署のタスクが無ければ fallback(キャラの固定タスク)を使う。
+function buildMeetingScript(tasks: NotionTask[], fallback: Map<string, TaskLike>): MeetingBubble[] {
+  return CHARACTER_ROSTER.map((character) => {
+    const deptTasks: TaskLike[] = tasks.filter((task) => task.department === character.department);
+    const polite = character.speechStyle === "敬語";
+
+    const completed = deptTasks.filter((t) => t.status === "完了");
+    const recentDone = completed.length ? completed[completed.length - 1] : undefined; // 直近で終わったこと
+    const current =
+      deptTasks.find((t) => t.status === "進行中") ?? deptTasks.find((t) => t.status === "未着手"); // 現在のタスク
+
+    const picks: TaskLike[] = [];
+    if (recentDone) picks.push(recentDone);
+    if (current) picks.push(current);
+    if (picks.length === 0) {
+      const own = fallback.get(character.department);
+      if (own) picks.push(own);
+    }
+
+    const text = picks.length
+      ? picks.map((task) => lineForTask(task.title, task.status, polite)).join(" ")
+      : "特にありません。";
+    return { id: character.id, name: character.name, color: character.color, text };
+  });
 }
 
 export async function handleChatCommand(input: string, game: GameCanvasHandle | null): Promise<ChatResult> {
@@ -34,11 +78,23 @@ export async function handleChatCommand(input: string, game: GameCanvasHandle | 
 
   if (message === "全員集合" || message === "ミーティング") {
     game?.gatherAll(true);
-    const snapshot = game?.getCharacterSnapshot() ?? [];
-    const reports = snapshot.map(reportLine);
-    for (const line of reports) logs.push({ speaker: "meeting", text: line });
-    await Promise.allSettled(reports.map((content) => appendNotionReport(content, "meeting")));
-    return { logs, meetingReports: reports };
+    // 最新のNotionタスクを取得してキャラ状態へ反映し、進捗読み上げ台本を作る
+    let tasks: NotionTask[] = [];
+    try {
+      tasks = await fetchNotionTasks();
+      game?.setTasks(tasks);
+    } catch {
+      // Notion未設定時は固定タスクのまま台本を作る
+    }
+    const fallback = new Map<string, TaskLike>();
+    for (const snap of game?.getCharacterSnapshot() ?? []) {
+      fallback.set(snap.department, { title: snap.task, status: snap.status });
+    }
+    const script = buildMeetingScript(tasks, fallback);
+    logs.push({ speaker: "system", text: "ミーティングを始めます。各部署、進捗をどうぞ。" });
+    const reports = script.map((bubble) => `${bubble.name}: ${bubble.text}`);
+    await Promise.allSettled(script.map((bubble) => appendNotionReport(bubble.text, bubble.name)));
+    return { logs, meetingReports: reports, meetingScript: script };
   }
 
   if (message === "解散") {

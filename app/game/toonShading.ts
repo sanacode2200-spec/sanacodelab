@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { theme, hex } from "./theme";
 
 let sharedGradientMap: THREE.DataTexture | null = null;
 let sharedGradientSteps = 0;
@@ -30,16 +31,18 @@ export function getGradientMap(steps = 3) {
   return texture;
 }
 
-export function toonMaterial(color: number, steps = 3) {
+export function toonMaterial(color: number, steps = theme.toonSteps) {
   return new THREE.MeshToonMaterial({ color, gradientMap: getGradientMap(steps) });
 }
 
-export const OUTLINE_SCALE = 1.045;
+// アウトラインの色・太さは config/theme.json の outline で調整する。
+export const OUTLINE_SCALE = theme.outline.scale;
 
-const outlineMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.BackSide });
+const outlineMaterial = new THREE.MeshBasicMaterial({ color: hex(theme.outline.color), side: THREE.BackSide });
 
 // バックフェース法によるアウトライン。mesh は事前に親へ add しておくこと(同じ親に複製を追加するため)。
 export function addOutline(mesh: THREE.Mesh, scale = OUTLINE_SCALE) {
+  if (!theme.outline.enabled) return null;
   const parent = mesh.parent;
   if (!parent) return null;
   const outline = new THREE.Mesh(mesh.geometry, outlineMaterial);
@@ -48,4 +51,14 @@ export function addOutline(mesh: THREE.Mesh, scale = OUTLINE_SCALE) {
   outline.scale.copy(mesh.scale).multiplyScalar(scale);
   parent.add(outline);
   return outline;
+}
+
+// グループ配下の全Meshにアウトラインを付ける。各Meshはそれぞれの親へ複製を追加する。
+export function addOutlineDeep(object: THREE.Object3D, scale = OUTLINE_SCALE) {
+  if (!theme.outline.enabled) return;
+  const meshes: THREE.Mesh[] = [];
+  object.traverse((obj) => {
+    if ((obj as THREE.Mesh).isMesh) meshes.push(obj as THREE.Mesh);
+  });
+  for (const mesh of meshes) addOutline(mesh, scale);
 }
